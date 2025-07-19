@@ -26,7 +26,5 @@ Designed as a sleek and responsive mini project, it requires no backend or datab
 | Logic      | JavaScript (ES6+) |
 | Storage    | LocalStorage (Web API) |
 
----
 
-## 📁 File Structure
 
