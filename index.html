@@ -221,6 +221,23 @@
             transform: translateY(-1px);
         }
 
+        /* Date input styling */
+        .form-date {
+            padding: 0.8rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: var(--border-radius);
+            font-size: 1rem;
+            background: rgba(255,255,255,0.8);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .form-date:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.2);
+            transform: translateY(-1px);
+        }
+
         /* Filters section */
         .filters {
             display: flex;
@@ -261,6 +278,24 @@
             animation: slideIn 0.5s ease-out forwards;
             opacity: 0;
             transform: translateX(-20px);
+        }
+
+        .task-item.overdue {
+            border-left: 4px solid var(--danger);
+            background: rgba(255, 118, 117, 0.1);
+        }
+
+        .dark-mode .task-item.overdue {
+            background: rgba(255, 118, 117, 0.2);
+        }
+
+        .task-item.due-soon {
+            border-left: 4px solid var(--warning);
+            background: rgba(253, 203, 110, 0.1);
+        }
+
+        .dark-mode .task-item.due-soon {
+            background: rgba(253, 203, 110, 0.2);
         }
 
         @keyframes slideIn {
@@ -320,6 +355,25 @@
             display: inline-flex;
             align-items: center;
             gap: 0.3rem;
+        }
+
+        .task-deadline {
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .deadline-overdue {
+            color: var(--danger);
+        }
+
+        .deadline-soon {
+            color: var(--warning);
+        }
+
+        .deadline-normal {
+            color: var(--success);
         }
 
         .priority-high {
@@ -796,7 +850,7 @@
 <body>
     <div class="container">
         <header>
-            <h1><i class="fas fa-tasks"></i>ProTask Ultimate - by Shahid &  shankar</h1>
+            <h1><i class="fas fa-tasks"></i>ProTask Ultimate - by Shahid shankar</h1>
             <div class="controls">
                 <button id="theme-toggle" class="btn btn-outline ripple">
                     <i class="fas fa-moon"></i> Dark Mode
@@ -816,6 +870,7 @@
                 <option value="medium" selected>Medium Priority</option>
                 <option value="low">Low Priority</option>
             </select>
+            <input type="date" id="deadline-input" class="form-date" min="">
             <button type="submit" class="btn btn-primary ripple">
                 <i class="fas fa-plus"></i> Add Task
             </button>
@@ -838,6 +893,15 @@
                     <option value="high">High Priority</option>
                     <option value="medium">Medium Priority</option>
                     <option value="low">Low Priority</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <select id="deadline-filter" class="form-select">
+                    <option value="all">All Deadlines</option>
+                    <option value="today">Due Today</option>
+                    <option value="week">Due This Week</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="future">Future</option>
                 </select>
             </div>
         </div>
@@ -871,6 +935,10 @@
                 <div class="stat-value" id="completed-tasks">0</div>
                 <div class="stat-label">Completed</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-value" id="overdue-tasks">0</div>
+                <div class="stat-label">Overdue</div>
+            </div>
         </div>
     </div>
 
@@ -896,6 +964,7 @@
                         <option value="medium">Medium Priority</option>
                         <option value="low">Low Priority</option>
                     </select>
+                    <input type="date" id="edit-deadline-input" class="form-date" style="margin-top: 1rem;">
                 </form>
             </div>
             <div class="modal-footer">
@@ -925,17 +994,20 @@
             const taskForm = document.getElementById('task-form');
             const taskInput = document.getElementById('task-input');
             const prioritySelect = document.getElementById('priority-select');
+            const deadlineInput = document.getElementById('deadline-input');
             const taskList = document.getElementById('task-list');
             const emptyState = document.getElementById('empty-state');
             const searchInput = document.getElementById('search-input');
             const statusFilter = document.getElementById('status-filter');
             const priorityFilter = document.getElementById('priority-filter');
+            const deadlineFilter = document.getElementById('deadline-filter');
             const themeToggle = document.getElementById('theme-toggle');
             const clearCompletedBtn = document.getElementById('clear-completed');
             const editModal = document.getElementById('edit-modal');
             const editForm = document.getElementById('edit-form');
             const editTaskInput = document.getElementById('edit-task-input');
             const editPrioritySelect = document.getElementById('edit-priority-select');
+            const editDeadlineInput = document.getElementById('edit-deadline-input');
             const modalClose = document.getElementById('modal-close');
             const cancelEdit = document.getElementById('cancel-edit');
             const saveEdit = document.getElementById('save-edit');
@@ -943,12 +1015,18 @@
             const totalTasksEl = document.getElementById('total-tasks');
             const activeTasksEl = document.getElementById('active-tasks');
             const completedTasksEl = document.getElementById('completed-tasks');
+            const overdueTasksEl = document.getElementById('overdue-tasks');
             const progressBar = document.getElementById('progress-bar');
             const fab = document.getElementById('fab');
             const confirmationDialog = document.getElementById('confirmation-dialog');
             const dialogMessage = document.getElementById('dialog-message');
             const dialogCancel = document.getElementById('dialog-cancel');
             const dialogConfirm = document.getElementById('dialog-confirm');
+
+            // Set minimum date for deadline input to today
+            const today = new Date().toISOString().split('T')[0];
+            deadlineInput.min = today;
+            editDeadlineInput.min = today;
 
             // State
             let tasks = JSON.parse(localStorage.getItem('tasks')) || [];
@@ -969,6 +1047,7 @@
             searchInput.addEventListener('input', filterTasks);
             statusFilter.addEventListener('change', filterTasks);
             priorityFilter.addEventListener('change', filterTasks);
+            deadlineFilter.addEventListener('change', filterTasks);
             themeToggle.addEventListener('click', toggleTheme);
             clearCompletedBtn.addEventListener('click', () => showConfirmation('clearCompleted', 'Are you sure you want to clear all completed tasks?'));
             modalClose.addEventListener('click', closeModal);
@@ -1049,6 +1128,7 @@
                 
                 const taskText = taskInput.value.trim();
                 const priority = prioritySelect.value;
+                const deadline = deadlineInput.value;
                 
                 if (taskText === '') {
                     showToast('Please enter a task', 'error');
@@ -1060,6 +1140,7 @@
                     id: Date.now(),
                     text: taskText,
                     priority,
+                    deadline: deadline || null,
                     completed: false,
                     createdAt: new Date().toISOString()
                 };
@@ -1073,6 +1154,7 @@
                 
                 taskInput.value = '';
                 prioritySelect.value = 'medium';
+                deadlineInput.value = '';
                 showToast('Task added successfully', 'success');
                 
                 // Animate the new task
@@ -1099,6 +1181,16 @@
                     taskEl.dataset.id = task.id;
                     taskEl.style.animationDelay = `${index * 0.05}s`;
                     
+                    // Add deadline status classes
+                    if (task.deadline && !task.completed) {
+                        const deadlineStatus = getDeadlineStatus(task.deadline);
+                        if (deadlineStatus === 'overdue') {
+                            taskEl.classList.add('overdue');
+                        } else if (deadlineStatus === 'soon') {
+                            taskEl.classList.add('due-soon');
+                        }
+                    }
+                    
                     taskEl.innerHTML = `
                         <div class="task-content">
                             <div class="task-title">${task.text}</div>
@@ -1107,6 +1199,11 @@
                                 <span class="task-priority priority-${task.priority}">
                                     <i class="fas ${getPriorityIcon(task.priority)}"></i> ${capitalizeFirstLetter(task.priority)} priority
                                 </span>
+                                ${task.deadline ? `
+                                <span class="task-deadline ${getDeadlineClass(task.deadline, task.completed)}">
+                                    <i class="fas fa-calendar-day"></i> ${formatDeadline(task.deadline)}
+                                </span>
+                                ` : ''}
                             </div>
                         </div>
                         <div class="task-actions">
@@ -1144,6 +1241,57 @@
                     case 'medium': return 'fa-exclamation';
                     case 'low': return 'fa-arrow-down';
                     default: return 'fa-circle';
+                }
+            }
+            
+            function getDeadlineStatus(deadline) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                const deadlineDate = new Date(deadline);
+                deadlineDate.setHours(0, 0, 0, 0);
+                
+                const timeDiff = deadlineDate.getTime() - today.getTime();
+                const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+                
+                if (daysDiff < 0) {
+                    return 'overdue';
+                } else if (daysDiff <= 3) {
+                    return 'soon';
+                } else {
+                    return 'normal';
+                }
+            }
+            
+            function getDeadlineClass(deadline, isCompleted) {
+                if (isCompleted) return 'deadline-normal';
+                
+                const status = getDeadlineStatus(deadline);
+                return `deadline-${status}`;
+            }
+            
+            function formatDeadline(deadline) {
+                const deadlineDate = new Date(deadline);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                const timeDiff = deadlineDate.getTime() - today.getTime();
+                const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+                
+                if (daysDiff < 0) {
+                    return `Overdue by ${Math.abs(daysDiff)} day${Math.abs(daysDiff) !== 1 ? 's' : ''}`;
+                } else if (daysDiff === 0) {
+                    return 'Due today';
+                } else if (daysDiff === 1) {
+                    return 'Due tomorrow';
+                } else if (daysDiff <= 7) {
+                    return `Due in ${daysDiff} days`;
+                } else {
+                    return deadlineDate.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                    });
                 }
             }
             
@@ -1186,6 +1334,7 @@
                     currentEditId = id;
                     editTaskInput.value = task.text;
                     editPrioritySelect.value = task.priority;
+                    editDeadlineInput.value = task.deadline || '';
                     editModal.classList.add('active');
                     editTaskInput.focus();
                 }
@@ -1199,6 +1348,7 @@
             function saveEditedTask() {
                 const newText = editTaskInput.value.trim();
                 const newPriority = editPrioritySelect.value;
+                const newDeadline = editDeadlineInput.value || null;
                 
                 if (newText === '') {
                     showToast('Task cannot be empty', 'error');
@@ -1210,6 +1360,7 @@
                 if (taskIndex !== -1) {
                     tasks[taskIndex].text = newText;
                     tasks[taskIndex].priority = newPriority;
+                    tasks[taskIndex].deadline = newDeadline;
                     saveTasks();
                     renderTasks();
                     closeModal();
@@ -1221,6 +1372,7 @@
                 const searchTerm = searchInput.value.toLowerCase();
                 const status = statusFilter.value;
                 const priority = priorityFilter.value;
+                const deadlineFilterValue = deadlineFilter.value;
                 
                 const filteredTasks = tasks.filter(task => {
                     const matchesSearch = task.text.toLowerCase().includes(searchTerm);
@@ -1229,11 +1381,36 @@
                                         (status === 'completed' && task.completed);
                     const matchesPriority = priority === 'all' || task.priority === priority;
                     
-                    return matchesSearch && matchesStatus && matchesPriority;
+                    // Deadline filtering
+                    let matchesDeadline = true;
+                    if (deadlineFilterValue !== 'all' && task.deadline) {
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        
+                        const deadlineDate = new Date(task.deadline);
+                        deadlineDate.setHours(0, 0, 0, 0);
+                        
+                        const timeDiff = deadlineDate.getTime() - today.getTime();
+                        const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+                        
+                        if (deadlineFilterValue === 'today') {
+                            matchesDeadline = daysDiff === 0;
+                        } else if (deadlineFilterValue === 'week') {
+                            matchesDeadline = daysDiff >= 0 && daysDiff <= 7;
+                        } else if (deadlineFilterValue === 'overdue') {
+                            matchesDeadline = daysDiff < 0;
+                        } else if (deadlineFilterValue === 'future') {
+                            matchesDeadline = daysDiff > 0;
+                        }
+                    } else if (deadlineFilterValue !== 'all' && !task.deadline) {
+                        matchesDeadline = false;
+                    }
+                    
+                    return matchesSearch && matchesStatus && matchesPriority && matchesDeadline;
                 });
                 
                 renderFilteredTasks(filteredTasks);
-                checkEmptyState(filteredTasks.length === 0 && (searchTerm || status !== 'all' || priority !== 'all'));
+                checkEmptyState(filteredTasks.length === 0 && (searchTerm || status !== 'all' || priority !== 'all' || deadlineFilterValue !== 'all'));
             }
             
             function renderFilteredTasks(filteredTasks) {
@@ -1249,6 +1426,16 @@
                     taskEl.dataset.id = task.id;
                     taskEl.style.animationDelay = `${index * 0.05}s`;
                     
+                    // Add deadline status classes
+                    if (task.deadline && !task.completed) {
+                        const deadlineStatus = getDeadlineStatus(task.deadline);
+                        if (deadlineStatus === 'overdue') {
+                            taskEl.classList.add('overdue');
+                        } else if (deadlineStatus === 'soon') {
+                            taskEl.classList.add('due-soon');
+                        }
+                    }
+                    
                     taskEl.innerHTML = `
                         <div class="task-content">
                             <div class="task-title">${task.text}</div>
@@ -1257,6 +1444,11 @@
                                 <span class="task-priority priority-${task.priority}">
                                     <i class="fas ${getPriorityIcon(task.priority)}"></i> ${capitalizeFirstLetter(task.priority)} priority
                                 </span>
+                                ${task.deadline ? `
+                                <span class="task-deadline ${getDeadlineClass(task.deadline, task.completed)}">
+                                    <i class="fas fa-calendar-day"></i> ${formatDeadline(task.deadline)}
+                                </span>
+                                ` : ''}
                             </div>
                         </div>
                         <div class="task-actions">
@@ -1327,10 +1519,16 @@
                 const total = tasks.length;
                 const completed = tasks.filter(task => task.completed).length;
                 const active = total - completed;
+                const overdue = tasks.filter(task => {
+                    if (!task.deadline || task.completed) return false;
+                    const deadlineStatus = getDeadlineStatus(task.deadline);
+                    return deadlineStatus === 'overdue';
+                }).length;
                 
                 totalTasksEl.textContent = total;
                 activeTasksEl.textContent = active;
                 completedTasksEl.textContent = completed;
+                overdueTasksEl.textContent = overdue;
             }
             
             function updateProgressBar() {
