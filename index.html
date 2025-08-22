@@ -6,6 +6,12 @@
     <title>ProTask Ultimate | Advanced Task Manager</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
     <style>
         :root {
             --primary: #6c5ce7;
@@ -816,6 +822,7 @@
         .dialog-message {
             margin-bottom: 1.5rem;
             font-size: 1.1rem;
+            line-height: 1.5;
         }
 
         .dialog-actions {
@@ -845,12 +852,153 @@
                 opacity: 0;
             }
         }
+
+        /* Login Modal Styles */
+        #login-tabs {
+            display: flex;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--gray);
+            position: relative;
+            transition: var(--transition);
+        }
+
+        .tab-btn.active {
+            color: var(--primary);
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--primary);
+            border-radius: 3px 3px 0 0;
+        }
+
+        .tab-btn:hover {
+            color: var(--primary);
+        }
+
+        .dark-mode .tab-btn {
+            color: #ccc;
+        }
+
+        .dark-mode .tab-btn.active {
+            color: var(--primary-light);
+        }
+
+        .dark-mode .tab-btn.active::after {
+            background: var(--primary-light);
+        }
+
+        /* User info in header */
+        #user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-left: auto;
+        }
+
+        #user-name {
+            font-weight: 500;
+        }
+
+        /* Error message */
+        .error-message {
+            color: var(--danger);
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+            text-align: center;
+        }
+
+        /* Loading state */
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        /* Responsive adjustments for auth */
+        @media (max-width: 768px) {
+            #user-info {
+                margin-left: 0;
+                margin-top: 1rem;
+                width: 100%;
+                justify-content: flex-end;
+            }
+            
+            .controls {
+                flex-direction: column;
+                gap: 0.5rem;
+                width: 100%;
+            }
+            
+            .modal-content {
+                width: 90%;
+                margin: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Login to ProTask</h3>
+                <button class="modal-close" id="login-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="login-tabs">
+                    <button class="tab-btn active" data-tab="login">Login</button>
+                    <button class="tab-btn" data-tab="register">Register</button>
+                </div>
+                
+                <form id="login-form">
+                    <div class="form-group">
+                        <input type="email" id="login-email" class="form-input" placeholder="Email" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="login-password" class="form-input" placeholder="Password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary ripple" style="width: 100%; margin-top: 1rem;">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                </form>
+                
+                <form id="register-form" style="display: none;">
+                    <div class="form-group">
+                        <input type="text" id="register-name" class="form-input" placeholder="Full Name" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="email" id="register-email" class="form-input" placeholder="Email" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="register-password" class="form-input" placeholder="Password (min. 6 characters)" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary ripple" style="width: 100%; margin-top: 1rem;">
+                        <i class="fas fa-user-plus"></i> Create Account
+                    </button>
+                </form>
+                
+                <div id="auth-message" class="error-message"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <header>
-            <h1><i class="fas fa-tasks"></i>ProTask Ultimate - by Shahid shankar</h1>
+            <h1><i class="fas fa-tasks"></i> ProTask Ultimate - by Shahid shankar</h1>
             <div class="controls">
                 <button id="theme-toggle" class="btn btn-outline ripple">
                     <i class="fas fa-moon"></i> Dark Mode
@@ -858,6 +1006,13 @@
                 <button id="clear-completed" class="btn btn-outline ripple">
                     <i class="fas fa-trash-alt"></i> Clear Completed
                 </button>
+                <!-- This div will be shown when user is logged in -->
+                <div id="user-info" style="display: none;">
+                    <span id="user-name"></span>
+                    <button id="logout-btn" class="btn btn-outline ripple">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
             </div>
         </header>
 
@@ -989,6 +1144,21 @@
     <div id="toast-container" class="toast-container"></div>
 
     <script>
+        // Firebase configuration - REPLACE WITH YOUR OWN CONFIG!
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY_HERE",
+            authDomain: "your-project-id.firebaseapp.com",
+            projectId: "your-project-id",
+            storageBucket: "your-project-id.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "YOUR_APP_ID_HERE"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
         document.addEventListener('DOMContentLoaded', function() {
             // DOM Elements
             const taskForm = document.getElementById('task-form');
@@ -1022,6 +1192,22 @@
             const dialogMessage = document.getElementById('dialog-message');
             const dialogCancel = document.getElementById('dialog-cancel');
             const dialogConfirm = document.getElementById('dialog-confirm');
+            
+            // Auth elements
+            const loginModal = document.getElementById('login-modal');
+            const loginClose = document.getElementById('login-close');
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+            const loginEmail = document.getElementById('login-email');
+            const loginPassword = document.getElementById('login-password');
+            const registerName = document.getElementById('register-name');
+            const registerEmail = document.getElementById('register-email');
+            const registerPassword = document.getElementById('register-password');
+            const authMessage = document.getElementById('auth-message');
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            const userInfo = document.getElementById('user-info');
+            const userName = document.getElementById('user-name');
+            const logoutBtn = document.getElementById('logout-btn');
 
             // Set minimum date for deadline input to today
             const today = new Date().toISOString().split('T')[0];
@@ -1029,18 +1215,16 @@
             editDeadlineInput.min = today;
 
             // State
-            let tasks = JSON.parse(localStorage.getItem('tasks')) || [];
+            let tasks = [];
+            let currentUser = null;
             let currentEditId = null;
             let pendingAction = null;
             let pendingActionData = null;
 
             // Initialize
-            renderTasks();
-            updateStats();
-            checkEmptyState();
-            updateProgressBar();
             setupRippleEffects();
             checkMobile();
+            initAuth();
 
             // Event Listeners
             taskForm.addEventListener('submit', addTask);
@@ -1055,11 +1239,34 @@
             saveEdit.addEventListener('click', saveEditedTask);
             fab.addEventListener('click', () => {
                 taskInput.focus();
-                // Smooth scroll to form
                 document.querySelector('.task-form').scrollIntoView({ behavior: 'smooth' });
             });
             dialogCancel.addEventListener('click', closeConfirmation);
             dialogConfirm.addEventListener('click', confirmAction);
+            
+            // Auth event listeners
+            loginClose.addEventListener('click', closeLoginModal);
+            loginForm.addEventListener('submit', handleLogin);
+            registerForm.addEventListener('submit', handleRegister);
+            logoutBtn.addEventListener('click', handleLogout);
+            
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const tab = button.dataset.tab;
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                    
+                    if (tab === 'login') {
+                        loginForm.style.display = 'block';
+                        registerForm.style.display = 'none';
+                    } else {
+                        loginForm.style.display = 'none';
+                        registerForm.style.display = 'block';
+                    }
+                    
+                    authMessage.textContent = '';
+                });
+            });
 
             // Check for saved theme preference
             if (localStorage.getItem('darkMode') === 'enabled') {
@@ -1077,6 +1284,147 @@
             }
 
             window.addEventListener('resize', checkMobile);
+
+            // Authentication Functions
+            function initAuth() {
+                // Listen for auth state changes
+                auth.onAuthStateChanged((user) => {
+                    if (user) {
+                        // User is signed in
+                        currentUser = user;
+                        userInfo.style.display = 'flex';
+                        userName.textContent = user.displayName || user.email;
+                        closeLoginModal();
+                        loadUserTasks();
+                        showToast('Welcome back!', 'success');
+                    } else {
+                        // User is signed out
+                        currentUser = null;
+                        userInfo.style.display = 'none';
+                        tasks = [];
+                        renderTasks();
+                        updateStats();
+                        checkEmptyState();
+                        showLoginModal();
+                    }
+                });
+            }
+            
+            function showLoginModal() {
+                loginModal.classList.add('active');
+            }
+            
+            function closeLoginModal() {
+                loginModal.classList.remove('active');
+                authMessage.textContent = '';
+            }
+            
+            function handleLogin(e) {
+                e.preventDefault();
+                const email = loginEmail.value;
+                const password = loginPassword.value;
+                
+                if (!email || !password) {
+                    authMessage.textContent = 'Please fill in all fields';
+                    return;
+                }
+                
+                auth.signInWithEmailAndPassword(email, password)
+                    .catch((error) => {
+                        authMessage.textContent = error.message;
+                    });
+            }
+            
+            function handleRegister(e) {
+                e.preventDefault();
+                const name = registerName.value;
+                const email = registerEmail.value;
+                const password = registerPassword.value;
+                
+                if (!name || !email || !password) {
+                    authMessage.textContent = 'Please fill in all fields';
+                    return;
+                }
+                
+                if (password.length < 6) {
+                    authMessage.textContent = 'Password should be at least 6 characters';
+                    return;
+                }
+                
+                auth.createUserWithEmailAndPassword(email, password)
+                    .then((userCredential) => {
+                        // Update profile with name
+                        return userCredential.user.updateProfile({
+                            displayName: name
+                        });
+                    })
+                    .catch((error) => {
+                        authMessage.textContent = error.message;
+                    });
+            }
+            
+            function handleLogout() {
+                auth.signOut()
+                    .then(() => {
+                        showToast('Logged out successfully', 'info');
+                    })
+                    .catch((error) => {
+                        showToast('Error signing out', 'error');
+                    });
+            }
+
+            // Database Functions
+            function loadUserTasks() {
+                if (!currentUser) return;
+                
+                db.collection('users').doc(currentUser.uid).collection('tasks')
+                    .orderBy('createdAt', 'desc')
+                    .onSnapshot((snapshot) => {
+                        tasks = [];
+                        snapshot.forEach((doc) => {
+                            const task = doc.data();
+                            task.id = doc.id;
+                            tasks.push(task);
+                        });
+                        renderTasks();
+                        updateStats();
+                        checkEmptyState();
+                        updateProgressBar();
+                    }, (error) => {
+                        showToast('Error loading tasks', 'error');
+                    });
+            }
+            
+            function saveTaskToDB(task, isNew = true) {
+                if (!currentUser) {
+                    showToast('Please log in to save tasks', 'error');
+                    return Promise.reject('No user logged in');
+                }
+                
+                const taskData = {
+                    text: task.text,
+                    priority: task.priority,
+                    deadline: task.deadline,
+                    completed: task.completed,
+                    createdAt: task.createdAt,
+                    updatedAt: new Date().toISOString()
+                };
+                
+                if (isNew) {
+                    return db.collection('users').doc(currentUser.uid).collection('tasks').add(taskData);
+                } else {
+                    return db.collection('users').doc(currentUser.uid).collection('tasks').doc(task.id).update(taskData);
+                }
+            }
+            
+            function deleteTaskFromDB(taskId) {
+                if (!currentUser) {
+                    showToast('Please log in to delete tasks', 'error');
+                    return Promise.reject('No user logged in');
+                }
+                
+                return db.collection('users').doc(currentUser.uid).collection('tasks').doc(taskId).delete();
+            }
 
             // Ripple effect setup
             function setupRippleEffects() {
@@ -1122,9 +1470,14 @@
                 closeConfirmation();
             }
 
-            // Functions
-            function addTask(e) {
+            // Task Functions
+            async function addTask(e) {
                 e.preventDefault();
+                
+                if (!currentUser) {
+                    showToast('Please log in to add tasks', 'error');
+                    return;
+                }
                 
                 const taskText = taskInput.value.trim();
                 const priority = prioritySelect.value;
@@ -1137,7 +1490,6 @@
                 }
                 
                 const task = {
-                    id: Date.now(),
                     text: taskText,
                     priority,
                     deadline: deadline || null,
@@ -1145,24 +1497,14 @@
                     createdAt: new Date().toISOString()
                 };
                 
-                tasks.push(task);
-                saveTasks();
-                renderTasks();
-                updateStats();
-                checkEmptyState();
-                updateProgressBar();
-                
-                taskInput.value = '';
-                prioritySelect.value = 'medium';
-                deadlineInput.value = '';
-                showToast('Task added successfully', 'success');
-                
-                // Animate the new task
-                const newTask = document.querySelector(`[data-id="${task.id}"]`);
-                if (newTask) {
-                    newTask.style.animation = 'none';
-                    void newTask.offsetWidth; // Trigger reflow
-                    newTask.style.animation = 'slideIn 0.5s ease-out forwards';
+                try {
+                    await saveTaskToDB(task, true);
+                    taskInput.value = '';
+                    prioritySelect.value = 'medium';
+                    deadlineInput.value = '';
+                    showToast('Task added successfully', 'success');
+                } catch (error) {
+                    showToast('Error adding task', 'error');
                 }
             }
             
@@ -1295,40 +1637,42 @@
                 }
             }
             
-            function toggleTaskComplete(id) {
+            async function toggleTaskComplete(id) {
                 const taskIndex = tasks.findIndex(task => task.id === id);
                 if (taskIndex !== -1) {
                     tasks[taskIndex].completed = !tasks[taskIndex].completed;
-                    saveTasks();
+                    
+                    try {
+                        await saveTaskToDB(tasks[taskIndex], false);
+                        const status = tasks[taskIndex].completed ? 'completed' : 'active';
+                        showToast(`Task marked as ${status}`, 'info');
+                    } catch (error) {
+                        // Revert the change on error
+                        tasks[taskIndex].completed = !tasks[taskIndex].completed;
+                        showToast('Error updating task', 'error');
+                    }
+                    
                     renderTasks();
                     updateStats();
                     updateProgressBar();
-                    
-                    const status = tasks[taskIndex].completed ? 'completed' : 'active';
-                    showToast(`Task marked as ${status}`, 'info');
-                    
-                    // Find the task element and animate it
-                    const taskEl = document.querySelector(`[data-id="${id}"]`);
-                    if (taskEl) {
-                        taskEl.classList.add('task-complete-animate');
-                        setTimeout(() => {
-                            taskEl.classList.remove('task-complete-animate');
-                        }, 300);
-                    }
                 }
             }
             
-            function deleteTask(id) {
-                tasks = tasks.filter(task => task.id !== id);
-                saveTasks();
-                renderTasks();
-                updateStats();
-                updateProgressBar();
-                checkEmptyState();
-                showToast('Task deleted', 'info');
+            async function deleteTask(id) {
+                try {
+                    await deleteTaskFromDB(id);
+                    showToast('Task deleted', 'info');
+                } catch (error) {
+                    showToast('Error deleting task', 'error');
+                }
             }
             
             function openEditModal(id) {
+                if (!currentUser) {
+                    showToast('Please log in to edit tasks', 'error');
+                    return;
+                }
+                
                 const task = tasks.find(task => task.id === id);
                 if (task) {
                     currentEditId = id;
@@ -1345,7 +1689,7 @@
                 currentEditId = null;
             }
             
-            function saveEditedTask() {
+            async function saveEditedTask() {
                 const newText = editTaskInput.value.trim();
                 const newPriority = editPrioritySelect.value;
                 const newDeadline = editDeadlineInput.value || null;
@@ -1361,10 +1705,14 @@
                     tasks[taskIndex].text = newText;
                     tasks[taskIndex].priority = newPriority;
                     tasks[taskIndex].deadline = newDeadline;
-                    saveTasks();
-                    renderTasks();
-                    closeModal();
-                    showToast('Task updated successfully', 'success');
+                    
+                    try {
+                        await saveTaskToDB(tasks[taskIndex], false);
+                        closeModal();
+                        showToast('Task updated successfully', 'success');
+                    } catch (error) {
+                        showToast('Error updating task', 'error');
+                    }
                 }
             }
             
@@ -1480,14 +1828,16 @@
                 });
             }
             
-            function clearCompletedTasks() {
-                tasks = tasks.filter(task => !task.completed);
-                saveTasks();
-                renderTasks();
-                updateStats();
-                updateProgressBar();
-                checkEmptyState();
-                showToast('Completed tasks cleared', 'info');
+            async function clearCompletedTasks() {
+                const completedTasks = tasks.filter(task => task.completed);
+                
+                try {
+                    const deletePromises = completedTasks.map(task => deleteTaskFromDB(task.id));
+                    await Promise.all(deletePromises);
+                    showToast('Completed tasks cleared', 'info');
+                } catch (error) {
+                    showToast('Error clearing completed tasks', 'error');
+                }
             }
             
             function toggleTheme() {
@@ -1537,10 +1887,6 @@
                 const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
                 
                 progressBar.style.width = `${percentage}%`;
-            }
-            
-            function saveTasks() {
-                localStorage.setItem('tasks', JSON.stringify(tasks));
             }
             
             function showToast(message, type) {
